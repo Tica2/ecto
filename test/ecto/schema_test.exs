@@ -31,6 +31,7 @@ defmodule Ecto.SchemaTest do
 
   test "schema metadata" do
     assert Model.__schema__(:source)             == "mymodel"
+    assert Model.__schema__(:prefix)             == nil
     assert Model.__schema__(:fields)             == [:id, :name, :email, :count, :array, :uuid, :comment_id]
     assert Model.__schema__(:read_after_writes)  == [:email, :count]
     assert Model.__schema__(:primary_key)        == [:id]
@@ -82,6 +83,48 @@ defmodule Ecto.SchemaTest do
     model = %Model{}
     assert inspect(model.__meta__) == "#Ecto.Schema.Metadata<:built>"
   end
+
+  ## Schema prefix
+
+  defmodule PrefixModel do
+    use Ecto.Model
+    import Ecto.Query
+
+    schema "model_with_prefix", prefix: "tenant" do
+      field :name,  :string
+    end
+
+    def model_from do
+      from(c in __MODULE__)
+    end
+  end
+
+  test "schema metadata with prefix" do
+    assert PrefixModel.__schema__(:source)             == "model_with_prefix"
+    assert PrefixModel.__schema__(:prefix)             == "tenant"
+  end
+
+  test "updates meta_prefix with put_meta" do
+    model = %PrefixModel{}
+    assert model.__meta__.source == {"tenant", "model_with_prefix"}
+    model = Ecto.Model.put_meta(model, source: "new_model")
+    assert model.__meta__.source == {"tenant", "new_model"}
+    model = Ecto.Model.put_meta(model, prefix: "prefix")
+    assert model.__meta__.source == {"prefix", "new_model"}
+    model = Ecto.Model.put_meta(model, source: "mymodel")
+    assert model.__meta__.source == {"prefix", "mymodel"}
+
+    model = Ecto.Model.put_meta(model, context: "foobar", state: :loaded)
+    assert model.__meta__.state == :loaded
+    assert model.__meta__.context == "foobar"
+  end
+
+  test "query from prefix model" do
+    q = PrefixModel.model_from
+    IO.puts "---"
+    IO.inspect Map.to_list(q)
+  end
+  ##
 
   defmodule SchemaModel do
     use Ecto.Model

@@ -273,7 +273,7 @@ defmodule Ecto.Schema do
   @doc false
   defmacro __using__(_) do
     quote do
-      import Ecto.Schema, only: [schema: 2, embedded_schema: 1]
+      import Ecto.Schema, only: [schema: 2, schema: 3, embedded_schema: 1]
 
       @primary_key {:id, :id, autogenerate: true}
       @timestamps_opts []
@@ -309,7 +309,18 @@ defmodule Ecto.Schema do
   """
   defmacro schema(source, [do: block]) do
     quote do
+      Ecto.Schema.schema unquote(source), [], unquote([do: block])
+    end
+  end
+  @doc """
+  Defines a schema with a source name, optional `prefix: "my_prefix"` and field definitions.
+  """
+  defmacro schema(source, schema_opts, [do: block]) do
+    prefix = Keyword.get(schema_opts, :prefix)
+
+    quote do
       source = unquote(source)
+      prefix = unquote(prefix)
 
       unless is_binary(source) do
         raise ArgumentError, "schema source must be a string, got: #{inspect source}"
@@ -318,7 +329,7 @@ defmodule Ecto.Schema do
       Module.register_attribute(__MODULE__, :changeset_fields, accumulate: true)
       Module.register_attribute(__MODULE__, :struct_fields, accumulate: true)
       Module.put_attribute(__MODULE__, :struct_fields,
-                           {:__meta__, %Metadata{state: :built, source: {nil, source}}})
+                           {:__meta__, %Metadata{state: :built, source: {prefix, source}}})
 
       primary_key_fields =
         case @primary_key do
@@ -345,7 +356,7 @@ defmodule Ecto.Schema do
       Module.eval_quoted __ENV__, [
         Ecto.Schema.__struct__(@struct_fields),
         Ecto.Schema.__changeset__(@changeset_fields),
-        Ecto.Schema.__schema__(source, fields, primary_key_fields),
+        Ecto.Schema.__schema__(prefix, source, fields, primary_key_fields),
         Ecto.Schema.__types__(fields),
         Ecto.Schema.__assocs__(assocs),
         Ecto.Schema.__embeds__(embeds),
@@ -936,6 +947,7 @@ defmodule Ecto.Schema do
 
   @doc false
   def __load__(model, prefix, source, context, data, loader) do
+    prefix = prefix || model.__schema__(:prefix)
     source = source || model.__schema__(:source)
     struct = model.__struct__()
     fields = model.__schema__(:types)
@@ -1071,6 +1083,11 @@ defmodule Ecto.Schema do
 
   @doc false
   def __schema__(source, fields, primary_key) do
+    __schema__(nil, source, fields, primary_key)
+  end
+
+  @doc false
+  def __schema__(prefix, source, fields, primary_key) do
     field_names = Enum.map(fields, &elem(&1, 0))
 
     # Hash is used by the query cache to specify
@@ -1080,6 +1097,7 @@ defmodule Ecto.Schema do
     hash = :erlang.phash2({primary_key, fields})
 
     quote do
+      def __schema__(:prefix),      do: unquote(Macro.escape(prefix))
       def __schema__(:source),      do: unquote(Macro.escape(source))
       def __schema__(:fields),      do: unquote(field_names)
       def __schema__(:primary_key), do: unquote(primary_key)
