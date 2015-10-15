@@ -744,6 +744,63 @@ defmodule Ecto.Adapters.PostgresTest do
     assert SQL.execute_ddl(rename) == ~s|ALTER TABLE "foo"."posts" RENAME "given_name" TO "first_name"|
   end
 
+  ## Static model prefixes
+
+  defmodule PrefixModel do
+    use Ecto.Model
+
+    schema "model", prefix: "prefix" do
+      field :x, :integer
+      field :y, :integer
+      field :z, :integer
+      field :w, {:array, :integer}
+
+      has_many :comments, Ecto.Adapters.PostgresTest.Model2,
+        references: :x,
+        foreign_key: :z
+      has_one :permalink, Ecto.Adapters.PostgresTest.Model3,
+        references: :y,
+        foreign_key: :id
+    end
+  end
+
+  test "select model with prefix" do
+    query = PrefixModel |> select([r], r.x) |> normalize
+    assert SQL.all(query) == ~s{SELECT m0."x" FROM "prefix"."model" AS m0}
+  end
+
+  test "alter prefix same value" do
+    query = PrefixModel |> select([r], r.x) |> normalize
+    query = %{query | prefix: "prefix"}
+    assert SQL.all(query) == ~s{SELECT m0."x" FROM "prefix"."model" AS m0}
+  end
+
+  test "alter prefix new value" do
+    query = PrefixModel |> select([r], r.x) |> normalize
+    query = %{query | prefix: "prefix1"}
+
+    assert_raise ArgumentError, "Model Ecto.Adapters.PostgresTest.PrefixModel " <>
+      ~s{has static prefix: "prefix" that can't be altered by global query prefix: "prefix1"}, fn ->
+      SQL.all(query)
+    end
+  end
+
+  test "join tables with prefix" do
+        query = PrefixModel
+            |> select([], ^0)
+            |> join(:inner, [], PrefixModel, ^true)
+            |> join(:inner, [], PrefixModel, ^false)
+            |> normalize
+    assert SQL.all(query) == ~s{SELECT $1 FROM "prefix"."model" AS m0 INNER JOIN "prefix"."model" AS m1 ON $2 INNER JOIN "prefix"."model" AS m2 ON $3}
+  end
+
+  test "row tables with global prefix" do
+    query = "posts" |> join(:inner, [p], q in "comments", p.x == q.z) |> select([], 0) |> normalize
+    query = %{query | prefix: "prefix"}
+    assert SQL.all(query) ==
+           ~s{SELECT 0 FROM "prefix"."posts" AS p0 INNER JOIN "prefix"."comments" AS c1 ON p0."x" = c1."z"}
+  end
+
   defp remove_newlines(string) do
     string |> String.strip |> String.replace("\n", " ")
   end

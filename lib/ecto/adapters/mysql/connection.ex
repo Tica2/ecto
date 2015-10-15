@@ -440,7 +440,7 @@ if Code.ensure_loaded?(Mariaex.Connection) do
         case elem(sources, pos) do
           {table, model} ->
             name = String.first(table) <> Integer.to_string(pos)
-            {quote_table(prefix, table), name, model}
+            {quote_table(find_name_prefix(model,prefix), table), name, model}
           {:fragment, _, _} ->
             {nil, "f" <> Integer.to_string(pos), nil}
         end
@@ -449,6 +449,19 @@ if Code.ensure_loaded?(Mariaex.Connection) do
 
     defp create_names(_prefix, _sources, pos, pos) do
       []
+    end
+
+    defp find_name_prefix(nil, prefix) do
+      prefix
+    end
+    defp find_name_prefix(model, prefix) when is_atom(model) do
+      case {model.__schema__(:prefix), prefix} do
+        {nil, _} -> prefix
+        {model_prefix, nil} -> model_prefix
+        {^prefix, ^prefix} -> prefix
+        {model_prefix, _} -> error!(nil, "Model #{inspect model} has static prefix: \"#{model_prefix}\"" <>
+          " that can't be altered by global query prefix: \"#{prefix}\"")
+      end
     end
 
     ## DDL

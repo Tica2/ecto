@@ -121,8 +121,7 @@ defmodule Ecto.SchemaTest do
 
   test "query from prefix model" do
     q = PrefixModel.model_from
-    IO.puts "---"
-    IO.inspect Map.to_list(q)
+    assert nil == q.prefix
   end
   ##
 
